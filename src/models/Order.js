@@ -49,6 +49,11 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    cart: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Cart',
+      required: true,
+    },
   },
   {
     timestamps: true,

@@ -1,6 +1,9 @@
+import mongoose from 'mongoose';
 import { calculateCartTotal } from '../services/cart.service.js';
 import { getPayPalAccessToken, createPayPalOrder, capturePayPalPayment } from '../services/paypal.service.js';
 import Order from '../models/Order.js';
+import Product from '../models/Product.js';
+import Cart from '../models/Cart.js';
 
 // @desc Create a PayPal order for checkout and persist order in DB
 // @route POST /api/payments/paypal/create-order
@@ -57,6 +60,7 @@ export const handleCreatePayPalOrder = async (req, res) => {
       shippingAddress,
       paypalOrderId: paypalOrder.id,
       paymentStatus: 'pending',
+      cart: cartId,
     });
 
     await order.save();
@@ -90,17 +94,81 @@ export const handleCapturePayPalPayment = async (req, res) => {
       });
     }
 
+    // Find Order in DB
+    const order = await Order.findOne({ paypalOrderId: orderId });
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found',
+      });
+    }
+
+    if (order.paymentStatus === 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Order has already been completed',
+      });
+    }
+
     // Get PayPal Access Token
     const paypalToken = await getPayPalAccessToken();
 
     // Capture the payment via PayPal API
     const captureData = await capturePayPalPayment(paypalToken, orderId);
 
-    return res.status(200).json({
-      success: true,
-      message: 'PayPal payment captured successfully',
-      captureData,
-    });
+    const captureId = captureData.purchase_units?.[0]?.payments?.captures?.[0]?.id;
+
+    if (captureData.status === 'COMPLETED') {
+      // Use a database session transaction to ensure consistency
+      const session = await mongoose.startSession();
+      session.startTransaction();
+
+      try {
+        // Update Order Status
+        order.paymentStatus = 'completed';
+        order.paypalCaptureId = captureId;
+        await order.save({ session });
+
+        // Deduct Stock
+        for (const item of order.items) {
+          await Product.findByIdAndUpdate(
+            item.product,
+            { $inc: { stock: -item.quantity } },
+            { session, new: true, runValidators: true }
+          );
+        }
+
+        // Set Cart status to 'ordered'
+        await Cart.findByIdAndUpdate(
+          order.cart,
+          { status: 'ordered' },
+          { session }
+        );
+
+        await session.commitTransaction();
+        session.endSession();
+      } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
+        throw err;
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'PayPal payment captured successfully, stock deducted, and cart status updated',
+        captureData,
+        orderId: order._id,
+      });
+    } else {
+      order.paymentStatus = 'failed';
+      await order.save();
+
+      return res.status(400).json({
+        success: false,
+        message: `Payment capture failed with PayPal status: ${captureData.status}`,
+        captureData,
+      });
+    }
   } catch (error) {
     return res.status(500).json({
       success: false,
