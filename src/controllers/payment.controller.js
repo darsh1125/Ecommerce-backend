@@ -1,17 +1,25 @@
 import { calculateCartTotal } from '../services/cart.service.js';
 import { getPayPalAccessToken, createPayPalOrder, capturePayPalPayment } from '../services/paypal.service.js';
+import Order from '../models/Order.js';
 
-// @desc Create a PayPal order for checkout
+// @desc Create a PayPal order for checkout and persist order in DB
 // @route POST /api/payments/paypal/create-order
 // @access Private (Customer)
 export const handleCreatePayPalOrder = async (req, res) => {
   try {
-    const { cartId } = req.body;
+    const { cartId, shippingAddress } = req.body;
 
     if (!cartId) {
       return res.status(400).json({
         success: false,
         message: 'Cart ID is required',
+      });
+    }
+
+    if (!shippingAddress) {
+      return res.status(400).json({
+        success: false,
+        message: 'Shipping address is required',
       });
     }
 
@@ -35,10 +43,29 @@ export const handleCreatePayPalOrder = async (req, res) => {
     // Create PayPal Checkout Order
     const paypalOrder = await createPayPalOrder(paypalToken, totalAmount);
 
+    // Persist pending Order in MongoDB
+    const orderItems = totalResult.cart.items.map((item) => ({
+      product: item.product._id,
+      quantity: item.quantity,
+      price: item.product.price,
+    }));
+
+    const order = new Order({
+      user: req.user._id,
+      items: orderItems,
+      totalAmount,
+      shippingAddress,
+      paypalOrderId: paypalOrder.id,
+      paymentStatus: 'pending',
+    });
+
+    await order.save();
+
     return res.status(201).json({
       success: true,
-      message: 'PayPal order created successfully',
+      message: 'PayPal order created and persisted successfully',
       paypalOrderId: paypalOrder.id,
+      orderId: order._id,
       paypalOrder,
     });
   } catch (error) {
