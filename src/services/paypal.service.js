@@ -39,3 +39,44 @@ export const getPayPalAccessToken = async () => {
     throw new Error(`PayPal Authentication failed: ${error.message}`);
   }
 };
+
+/**
+ * Creates a PayPal order using the calculated amount.
+ * @param {string} accessToken - The PayPal access token.
+ * @param {number} amount - The calculated total amount.
+ * @returns {Promise<Object>} - The PayPal order details.
+ */
+export const createPayPalOrder = async (accessToken, amount) => {
+  const baseUrl = process.env.PAYPAL_BASE_URL || 'https://api-m.sandbox.paypal.com';
+
+  try {
+    const response = await fetch(`${baseUrl}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        intent: 'CAPTURE',
+        purchase_units: [
+          {
+            amount: {
+              currency_code: 'USD',
+              value: amount.toFixed(2),
+            },
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `PayPal order creation failed with status ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('PayPal Order Creation Error:', error.message);
+    throw new Error(`PayPal Order Creation failed: ${error.message}`);
+  }
+};
