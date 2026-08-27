@@ -80,3 +80,34 @@ export const createPayPalOrder = async (accessToken, amount) => {
     throw new Error(`PayPal Order Creation failed: ${error.message}`);
   }
 };
+
+/**
+ * Captures an approved PayPal order.
+ * @param {string} accessToken - The PayPal access token.
+ * @param {string} orderId - The PayPal order ID.
+ * @returns {Promise<Object>} - The capture details.
+ */
+export const capturePayPalPayment = async (accessToken, orderId) => {
+  const baseUrl = process.env.PAYPAL_BASE_URL || 'https://api-m.sandbox.paypal.com';
+
+  try {
+    const response = await fetch(`${baseUrl}/v2/checkout/orders/${orderId}/capture`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `PayPal payment capture failed with status ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('PayPal Payment Capture Error:', error.message);
+    throw new Error(`PayPal Payment Capture failed: ${error.message}`);
+  }
+};
