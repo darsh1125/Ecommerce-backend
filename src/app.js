@@ -1,4 +1,5 @@
 import express from 'express';
+import authRoutes from './routes/auth.routes.js';
 
 const app = express();
 
@@ -11,5 +12,8 @@ app.get('/health', (req, res) => {
     message: 'E-commerce API is running',
   });
 });
+
+// Routes
+app.use('/api/auth', authRoutes);
 
 export default app;
