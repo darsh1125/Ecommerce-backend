@@ -1,3 +1,4 @@
+import { ZodError } from 'zod';
 import ApiError from '../utils/ApiError.js';
 
 export const validate = (schema) => {
@@ -6,11 +7,15 @@ export const validate = (schema) => {
       req.body = await schema.parseAsync(req.body);
       return next();
     } catch (error) {
-      const errors = error.errors.map((err) => ({
-        field: err.path.join('.'),
-        message: err.message,
-      }));
-      return next(new ApiError(400, 'Validation error', errors));
+      if (error instanceof ZodError) {
+        const issues = error.issues || error.errors || [];
+        const errors = issues.map((err) => ({
+          field: err.path.join('.'),
+          message: err.message,
+        }));
+        return next(new ApiError(400, 'Validation error', errors));
+      }
+      return next(error);
     }
   };
 };

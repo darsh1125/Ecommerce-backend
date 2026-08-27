@@ -47,10 +47,11 @@ export const handleCreatePayPalOrder = async (req, res) => {
     const paypalOrder = await createPayPalOrder(paypalToken, totalAmount);
 
     // Persist pending Order in MongoDB
-    const orderItems = totalResult.cart.items.map((item) => ({
-      product: item.product._id,
+    const cartItems = totalResult.cart?.items || [];
+    const orderItems = cartItems.map((item) => ({
+      product: item.product?._id || item.product,
       quantity: item.quantity,
-      price: item.product.price,
+      price: item.product?.price || 0,
     }));
 
     const order = new Order({
